@@ -40,6 +40,13 @@ STATUS_MOVES = {
     "yawn": ("slp", 60), "leechseed": ("seed", 90)
 }
 OHKO_BAD = {"explosion"}
+TWO_TURN_MOVES = {
+    "phantomforce", "bounce", "solarbeam", "solarbeblade", "fly", "dig", "dive",
+    "meteorbeam", "skullbash", "skyattack", "geomancy"
+}
+SEMI_INVULNERABLE_MOVES = {
+    "phantomforce", "bounce", "fly", "dig", "dive"
+}
 
 SPECIES_ITEM_PRIOR = {
     "gengar": {"choicescarf": 0.35, "focussash": 0.35, "lifeorb": 0.30},
@@ -353,6 +360,8 @@ class FoeMemory:
         self.speed_hi = 1e9
         self.item_known = None
         self.ability_known = None
+        self.charging_move = None
+        self.charge_turn = -1
 
 
 class PokemonAgent:
@@ -753,6 +762,35 @@ class PokemonAgent:
         if it:
             mem.item_known = norm(it)
 
+        current_turn = obs.get("turn", 0) or 0
+        if getattr(mem, "charging_move", None) and current_turn > getattr(mem, "charge_turn", -1) + 1:
+            mem.charging_move = None
+
+        last_cands = []
+        for k in ("last_move", "last_move_used", "last_used_move"):
+            if foe.get(k):
+                last_cands.append(foe.get(k))
+        for k in ("last_foe_move", "foe_last_move"):
+            if obs.get(k):
+                last_cands.append(obs.get(k))
+
+        my = obs.get("my_active") or {}
+        lost = ((self.prev["my_hp"] or 0) - (my.get("hp_percent", 0) or 0)) if (self.prev and my) else 999
+        for ent in last_cands:
+            mid = norm(ent.get("id") or ent.get("name") or ent.get("move")) if isinstance(ent, dict) else norm(ent)
+            if mid in TWO_TURN_MOVES:
+                if lost <= 1 or not getattr(mem, "charging_move", None):
+                    mem.charging_move = mid
+                    mem.charge_turn = current_turn
+
+        foe_cond = str(foe.get("condition") or "").lower()
+        foe_st = str(foe.get("status") or "").lower()
+        for ttm in TWO_TURN_MOVES:
+            if ttm in foe_cond or ttm in foe_st:
+                mem.charging_move = ttm
+                mem.charge_turn = current_turn
+                break
+
     def _infer_from_damage(self, obs, lost_pct, fname, mem):
         try:
             my = obs.get("my_active") or {}
@@ -832,6 +870,7 @@ class Ctx:
         self.my_team_hp = {}
         for t in obs.get("my_team", []) or []:
             self.my_team_hp[t.get("name")] = (t.get("hp_percent", 0) or 0) / 100.0
+        self.foe_charging_move = getattr(self.foe_mem, "charging_move", None)
         self.foe_alive_other = self._foe_other_count(obs)
         self.foe_dist = self._foe_distribution()
 
@@ -902,6 +941,8 @@ class Ctx:
 
     def _foe_distribution(self):
         """Distribution over foe actions with greedy-priority weighting."""
+        if getattr(self, "foe_charging_move", None):
+            return [(1.0, ("atk", self.foe_charging_move))]
         foe, me = self.foe, self.me
         scored = []
         for mid, q in foe.moves:
@@ -1144,6 +1185,30 @@ class Ctx:
                 # Resisted (0.5x, 0.25x) -> switch out if bench has a better counter!
                 sw_margin = -0.05
 
+        # Double-Turn Move Defense:
+        # If the opponent is using or charging a double-turn move (phantomforce, bounce, solarbeam, fly, dig, dive)
+        # that is lethal to our active Pokémon, see if switching to a bench Pokémon is better!
+        is_tt_lethal = False
+        target_tt = getattr(self, "foe_charging_move", None)
+        if not target_tt:
+            for fmid, q in self.foe.moves:
+                if fmid in TWO_TURN_MOVES:
+                    rl = damage_rolls(self.foe, self.me, fmid, self.weather)
+                    if rl[-1] >= self.me.hp or rl[8] >= self.me.hp * 0.88:
+                        is_tt_lethal = True
+                        target_tt = fmid
+                        break
+        else:
+            rl = damage_rolls(self.foe, self.me, target_tt, self.weather)
+            if rl[-1] >= self.me.hp or rl[8] >= self.me.hp * 0.88:
+                is_tt_lethal = True
+
+        if is_tt_lethal and target_tt and best_sw is not None:
+            if getattr(self, "foe_charging_move", None) in SEMI_INVULNERABLE_MOVES:
+                sw_margin = min(sw_margin, -0.30)
+            else:
+                sw_margin = min(sw_margin, -0.05)
+
         if best_sw is not None and best_sw[0] > best_move[0] + sw_margin:
             return best_sw[1]
         return best_move[1]
@@ -1318,8 +1383,9 @@ class Ctx:
                             pr_ = po * pdm * ph_m * pdf * ph_f
                             if pr_ <= 1e-7:
                                 continue
-                            dmg_m = dm * hit_m if not protect else 0.0
-                            dmg_f = df * hit_f if not my_protect else 0.0
+                            dmg_m = (dm * hit_m if not protect else 0.0) if not (self.foe_charging_move in SEMI_INVULNERABLE_MOVES and not is_status) else 0.0
+                            eff_my_protect = my_protect and (fmid != "phantomforce")
+                            dmg_f = df * hit_f if not eff_my_protect else 0.0
 
                             if me_first:
                                 # Player moves first
