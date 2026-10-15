@@ -222,7 +222,8 @@ def damage_rolls(att, dfn, mid, weather=""):
         weather = "sand" if weather else ""
     key = (
         att.name, att.hp > 0, round(att.frac, 2), tuple(sorted(att.boosts.items())), att.status, att.item, att.ability,
-        dfn.name, round(dfn.frac, 2), tuple(sorted(dfn.boosts.items())), dfn.status, dfn.item, mid, weather, att.stats["atk"], dfn.stats["def"]
+        dfn.name, round(dfn.frac, 2), tuple(sorted(dfn.boosts.items())), dfn.status, dfn.item, mid, weather,
+        tuple(sorted(att.stats.items())), tuple(sorted(dfn.stats.items()))
     )
     r = _cache.get(key)
     if r is not None:
@@ -290,6 +291,10 @@ def damage_rolls(att, dfn, mid, weather=""):
             mod *= 1.5
         elif mt == "Water":
             mod *= 0.5
+    elif weather == "sand":
+        for ab, pb in att.ab_probs:
+            if ab == "sandforce" and mt in ("Ground", "Steel", "Rock"):
+                mod *= 1.0 + 0.3 * pb
 
     if mid == "solarbeam" and weather in ("rain", "sand", "snow"):
         mod *= 0.5
@@ -485,7 +490,8 @@ class PokemonAgent:
                         if dmg_pct > foe_best_dmg:
                             foe_best_dmg = dmg_pct
 
-                faster = (me.stats["spe"] > foe.stats["spe"])
+                w_str = "sand" if has_sand else ""
+                faster = (eff_speed(me, w_str) > eff_speed(foe, w_str))
 
                 if faster:
                     if my_best_dmg >= 1.0:
@@ -602,6 +608,9 @@ class PokemonAgent:
         if getattr(mem, "has_no_item", False) or mem.item_known == "none":
             m.item = "none"
             m.item_prob = 0.0
+        elif mem.item_known:
+            m.item = mem.item_known
+            m.item_prob = 1.0
         return m
 
     def _foe_candidates(self, name, mem):
@@ -659,6 +668,12 @@ class PokemonAgent:
             mem.turns_active = 0
         elif self.prev:
             mem.turns_active += 1
+
+        if self.prev and (obs.get("turn", 0) or 0) > (self.prev.get("turn", 0) or 0):
+            if self.sand_turns > 0:
+                self.sand_turns -= 1
+                if self.sand_turns == 0:
+                    self.weather = ""
 
         self._ingest_reveals(obs, fname, mem)
 
@@ -1153,6 +1168,8 @@ class Ctx:
                 score -= 0.02 * neg
         if mid in ("outrage", "petaldance"):
             score -= self.P.get("lock_pen", 0.15)
+        if mid in ("phantomforce", "solarbeam", "fly", "dig", "bounce"):
+            score -= 0.20
         return score
 
     def outcome_move(self, mid, mv, fa):
@@ -1205,6 +1222,11 @@ class Ctx:
                 st, acc = STATUS_MOVES[fmid]
                 if not me.status and st in ("brn", "par", "slp", "psn"):
                     my_new_status = st
+
+        if not is_status and mv.get("t") == "Dark":
+            for ab, pb in foe.ab_probs:
+                if ab == "justified":
+                    foe_boost_atk = min(4, foe_boost_atk + int(round(1 * pb)))
 
         # Model our own status moves
         my_boost_atk = 0
@@ -1409,6 +1431,11 @@ class Ctx:
                         if ph <= 1e-9:
                             continue
                         hp = max(0.0, mon.hp - d * hit)
+                        if mon.item == "focussash" and mon.hp >= mon.maxhp - 0.5 and not (fmv and fmv.get("mh")):
+                            if hp <= 0:
+                                hp = 1.0
+                        if self.sand and not any(t in ("Rock", "Ground", "Steel") for t in mon.types):
+                            hp = max(0.0, hp - mon.maxhp / 16.0)
                         if hp > 0 and d > 0:
                             best_t, prio_k = self._best_dmg(mon, foe, foe.hp, intim_p)
                             if best_t > 1.0 and hp <= d:
@@ -1419,9 +1446,15 @@ class Ctx:
                 foe_boost = 0
                 if fmid in SETUP:
                     foe_boost = min(2, SETUP[fmid].get("atk", 0) + SETUP[fmid].get("spa", 0))
-                v = self.leaf(mon, mon.hp, min(foe.maxhp, foe.hp + (foe.maxhp * 0.5 if fmid in HEAL_MOVES else 0)), "", None, intim_p, foe_boost)
+                sw_hp = mon.hp
+                if self.sand and not any(t in ("Rock", "Ground", "Steel") for t in mon.types):
+                    sw_hp = max(0.0, sw_hp - mon.maxhp / 16.0)
+                v = self.leaf(mon, sw_hp, min(foe.maxhp, foe.hp + (foe.maxhp * 0.5 if fmid in HEAL_MOVES else 0)), "", None, intim_p, foe_boost)
             else:
-                v = self.leaf(mon, mon.hp, foe.hp, "", None, intim_p)
+                sw_hp = mon.hp
+                if self.sand and not any(t in ("Rock", "Ground", "Steel") for t in mon.types):
+                    sw_hp = max(0.0, sw_hp - mon.maxhp / 16.0)
+                v = self.leaf(mon, sw_hp, foe.hp, "", None, intim_p)
 
             total += w * v
             if w >= self.P.get("worst_w", 0.1):

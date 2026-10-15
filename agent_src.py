@@ -1168,6 +1168,8 @@ class Ctx:
                 score -= 0.02 * neg
         if mid in ("outrage", "petaldance"):
             score -= self.P.get("lock_pen", 0.15)
+        if mid in ("phantomforce", "solarbeam", "fly", "dig", "bounce"):
+            score -= 0.20
         return score
 
     def outcome_move(self, mid, mv, fa):
@@ -1220,6 +1222,11 @@ class Ctx:
                 st, acc = STATUS_MOVES[fmid]
                 if not me.status and st in ("brn", "par", "slp", "psn"):
                     my_new_status = st
+
+        if not is_status and mv.get("t") == "Dark":
+            for ab, pb in foe.ab_probs:
+                if ab == "justified":
+                    foe_boost_atk = min(4, foe_boost_atk + int(round(1 * pb)))
 
         # Model our own status moves
         my_boost_atk = 0
@@ -1424,6 +1431,11 @@ class Ctx:
                         if ph <= 1e-9:
                             continue
                         hp = max(0.0, mon.hp - d * hit)
+                        if mon.item == "focussash" and mon.hp >= mon.maxhp - 0.5 and not (fmv and fmv.get("mh")):
+                            if hp <= 0:
+                                hp = 1.0
+                        if self.sand and not any(t in ("Rock", "Ground", "Steel") for t in mon.types):
+                            hp = max(0.0, hp - mon.maxhp / 16.0)
                         if hp > 0 and d > 0:
                             best_t, prio_k = self._best_dmg(mon, foe, foe.hp, intim_p)
                             if best_t > 1.0 and hp <= d:
@@ -1434,9 +1446,15 @@ class Ctx:
                 foe_boost = 0
                 if fmid in SETUP:
                     foe_boost = min(2, SETUP[fmid].get("atk", 0) + SETUP[fmid].get("spa", 0))
-                v = self.leaf(mon, mon.hp, min(foe.maxhp, foe.hp + (foe.maxhp * 0.5 if fmid in HEAL_MOVES else 0)), "", None, intim_p, foe_boost)
+                sw_hp = mon.hp
+                if self.sand and not any(t in ("Rock", "Ground", "Steel") for t in mon.types):
+                    sw_hp = max(0.0, sw_hp - mon.maxhp / 16.0)
+                v = self.leaf(mon, sw_hp, min(foe.maxhp, foe.hp + (foe.maxhp * 0.5 if fmid in HEAL_MOVES else 0)), "", None, intim_p, foe_boost)
             else:
-                v = self.leaf(mon, mon.hp, foe.hp, "", None, intim_p)
+                sw_hp = mon.hp
+                if self.sand and not any(t in ("Rock", "Ground", "Steel") for t in mon.types):
+                    sw_hp = max(0.0, sw_hp - mon.maxhp / 16.0)
+                v = self.leaf(mon, sw_hp, foe.hp, "", None, intim_p)
 
             total += w * v
             if w >= self.P.get("worst_w", 0.1):
