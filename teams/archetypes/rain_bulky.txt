@@ -1,0 +1,26 @@
+Gyarados @ Lum Berry
+Ability: Intimidate
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Waterfall
+- Earthquake
+- Stone Edge
+- Dragon Dance
+
+Lapras @ Assault Vest
+Ability: Water Absorb
+EVs: 252 HP / 252 SpA / 4 SpD
+Modest Nature
+- Freeze-Dry
+- Hydro Pump
+- Thunderbolt
+- Ice Beam
+
+Arcanine @ Leftovers
+Ability: Intimidate
+EVs: 252 HP / 4 Atk / 252 Spe
+Jolly Nature
+- Flare Blitz
+- Extreme Speed
+- Will-O-Wisp
+- Close Combat

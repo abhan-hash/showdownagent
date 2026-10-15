@@ -1,0 +1,27 @@
+Tyranitar @ Leftovers  
+Ability: Sand Stream  
+EVs: 252 HP / 252 Atk / 4 SpD  
+Adamant Nature  
+- Stone Edge  
+- Crunch  
+- Earthquake  
+- Ice Punch  
+
+Excadrill @ Focus Sash  
+Ability: Mold Breaker  
+EVs: 252 Atk / 4 SpD / 252 Spe  
+Jolly Nature  
+- Earthquake  
+- Iron Head  
+- Rock Slide  
+- Swords Dance  
+
+Dragapult @ Choice Band  
+Ability: Infiltrator  
+EVs: 252 Atk / 4 SpD / 252 Spe  
+Jolly Nature  
+- Dragon Darts  
+- Phantom Force  
+- Flamethrower  
+- U-turn  
+

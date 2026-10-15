@@ -1,0 +1,26 @@
+Dragapult @ Life Orb
+Ability: Infiltrator
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Dragon Darts
+- Phantom Force
+- Flamethrower
+- U-turn
+
+Metagross @ Assault Vest
+Ability: Clear Body
+EVs: 252 HP / 252 Atk / 4 Spe
+Adamant Nature
+- Meteor Mash
+- Bullet Punch
+- Earthquake
+- Zen Headbutt
+
+Togekiss @ Leftovers
+Ability: Serene Grace
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Air Slash
+- Dazzling Gleam
+- Aura Sphere
+- Roost

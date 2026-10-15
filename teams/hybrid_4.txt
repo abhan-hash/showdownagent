@@ -1,0 +1,26 @@
+Dragonite @ Lum Berry
+Ability: Multiscale
+EVs: 252 Atk / 4 SpD / 252 Spe
+Adamant Nature
+- Extreme Speed
+- Outrage
+- Earthquake
+- Fire Punch
+
+Scizor @ Metal Coat
+Ability: Technician
+EVs: 252 HP / 252 Atk / 4 SpD
+Adamant Nature
+- Bullet Punch
+- Close Combat
+- Swords Dance
+- U-turn
+
+Togekiss @ Leftovers
+Ability: Serene Grace
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Air Slash
+- Dazzling Gleam
+- Aura Sphere
+- Roost

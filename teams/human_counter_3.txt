@@ -1,0 +1,26 @@
+Ferrothorn @ Leftovers
+Ability: Iron Barbs
+EVs: 252 HP / 252 Def / 4 SpD
+Relaxed Nature
+- Power Whip
+- Gyro Ball
+- Leech Seed
+- Protect
+
+Venusaur @ Black Sludge
+Ability: Overgrow
+EVs: 252 HP / 252 SpA / 4 SpD
+Modest Nature
+- Sleep Powder
+- Giga Drain
+- Sludge Bomb
+- Earth Power
+
+Togekiss @ Leftovers
+Ability: Serene Grace
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Thunder Wave
+- Air Slash
+- Dazzling Gleam
+- Roost

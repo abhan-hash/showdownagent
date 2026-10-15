@@ -1,0 +1,26 @@
+Volcarona @ Heavy-Duty Boots
+Ability: Flame Body
+EVs: 252 SpA / 4 SpD / 252 Spe
+Timid Nature
+- Quiver Dance
+- Bug Buzz
+- Fiery Dance
+- Giga Drain
+
+Gengar @ Focus Sash
+Ability: Cursed Body
+EVs: 252 SpA / 4 SpD / 252 Spe
+Timid Nature
+- Shadow Ball
+- Sludge Bomb
+- Focus Blast
+- Thunderbolt
+
+Hydreigon @ Choice Specs
+Ability: Levitate
+EVs: 252 SpA / 4 SpD / 252 Spe
+Timid Nature
+- Draco Meteor
+- Dark Pulse
+- Flamethrower
+- Flash Cannon

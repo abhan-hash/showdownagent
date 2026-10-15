@@ -1,0 +1,26 @@
+Lapras @ Assault Vest
+Ability: Water Absorb
+EVs: 252 HP / 252 SpA / 4 SpD
+Modest Nature
+- Freeze-Dry
+- Hydro Pump
+- Thunderbolt
+- Ice Beam
+
+Togekiss @ Leftovers
+Ability: Serene Grace
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Air Slash
+- Dazzling Gleam
+- Aura Sphere
+- Roost
+
+Metagross @ Assault Vest
+Ability: Clear Body
+EVs: 252 HP / 252 Atk / 4 Spe
+Adamant Nature
+- Meteor Mash
+- Bullet Punch
+- Earthquake
+- Zen Headbutt

@@ -1,0 +1,26 @@
+Arcanine @ Leftovers
+Ability: Intimidate
+EVs: 252 HP / 4 Atk / 252 Spe
+Jolly Nature
+- Flare Blitz
+- Extreme Speed
+- Will-O-Wisp
+- Close Combat
+
+Lapras @ Assault Vest
+Ability: Water Absorb
+EVs: 252 HP / 252 SpA / 4 SpD
+Modest Nature
+- Freeze-Dry
+- Hydro Pump
+- Thunderbolt
+- Ice Beam
+
+Togekiss @ Heavy-Duty Boots
+Ability: Serene Grace
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Air Slash
+- Dazzling Gleam
+- Thunder Wave
+- Roost

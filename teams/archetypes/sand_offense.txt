@@ -1,0 +1,26 @@
+Tyranitar @ Choice Band
+Ability: Sand Stream
+EVs: 252 HP / 252 Atk / 4 SpD
+Adamant Nature
+- Stone Edge
+- Crunch
+- Earthquake
+- Iron Head
+
+Excadrill @ Focus Sash
+Ability: Sand Rush
+EVs: 252 Atk / 4 Def / 252 Spe
+Adamant Nature
+- Earthquake
+- Iron Head
+- Rock Slide
+- Swords Dance
+
+Dragapult @ Life Orb
+Ability: Infiltrator
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Dragon Darts
+- Phantom Force
+- Flamethrower
+- U-turn

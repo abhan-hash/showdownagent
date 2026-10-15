@@ -1,0 +1,26 @@
+Ferrothorn @ Leftovers
+Ability: Iron Barbs
+EVs: 252 HP / 252 Def / 4 SpD
+Relaxed Nature
+- Gyro Ball
+- Power Whip
+- Leech Seed
+- Protect
+
+Corviknight @ Leftovers
+Ability: Mirror Armor
+EVs: 252 HP / 252 Def / 4 SpD
+Impish Nature
+- Body Press
+- Iron Defense
+- Roost
+- Brave Bird
+
+Togekiss @ Heavy-Duty Boots
+Ability: Serene Grace
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Air Slash
+- Dazzling Gleam
+- Roost
+- Aura Sphere

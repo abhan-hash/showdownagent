@@ -1,0 +1,26 @@
+Lucario @ Life Orb
+Ability: Inner Focus
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Close Combat
+- Extreme Speed
+- Meteor Mash
+- Swords Dance
+
+Dragonite @ Lum Berry
+Ability: Multiscale
+EVs: 252 Atk / 4 SpD / 252 Spe
+Adamant Nature
+- Extreme Speed
+- Outrage
+- Earthquake
+- Fire Punch
+
+Scizor @ Metal Coat
+Ability: Technician
+EVs: 252 HP / 252 Atk / 4 SpD
+Adamant Nature
+- Bullet Punch
+- Close Combat
+- Knock Off
+- Swords Dance

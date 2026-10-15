@@ -1,0 +1,26 @@
+Togekiss @ Leftovers
+Ability: Serene Grace
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Air Slash
+- Dazzling Gleam
+- Aura Sphere
+- Roost
+
+Corviknight @ Leftovers
+Ability: Mirror Armor
+EVs: 252 HP / 252 Def / 4 SpD
+Impish Nature
+- Body Press
+- Iron Defense
+- Roost
+- Brave Bird
+
+Dragapult @ Choice Band
+Ability: Infiltrator
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Dragon Darts
+- Phantom Force
+- Flamethrower
+- U-turn

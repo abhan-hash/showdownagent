@@ -1,0 +1,26 @@
+Togekiss @ Leftovers
+Ability: Serene Grace
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Nasty Plot
+- Air Slash
+- Dazzling Gleam
+- Flamethrower
+
+Arcanine @ Heavy-Duty Boots
+Ability: Intimidate
+EVs: 252 HP / 252 Atk / 4 Spe
+Adamant Nature
+- Flare Blitz
+- Extreme Speed
+- Will-O-Wisp
+- Close Combat
+
+Lapras @ Leftovers
+Ability: Water Absorb
+EVs: 252 HP / 252 SpA / 4 SpD
+Modest Nature
+- Freeze-Dry
+- Hydro Pump
+- Thunderbolt
+- Ice Beam

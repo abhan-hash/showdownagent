@@ -1,0 +1,26 @@
+Dragapult @ Choice Scarf
+Ability: Infiltrator
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Dragon Darts
+- Phantom Force
+- Flamethrower
+- U-turn
+
+Arcanine @ Focus Sash
+Ability: Intimidate
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Flare Blitz
+- Extreme Speed
+- Will-O-Wisp
+- Close Combat
+
+Togekiss @ Heavy-Duty Boots
+Ability: Serene Grace
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Air Slash
+- Dazzling Gleam
+- Thunder Wave
+- Roost

@@ -1,0 +1,26 @@
+Ferrothorn @ Leftovers
+Ability: Iron Barbs
+EVs: 252 HP / 252 Def / 4 SpD
+Relaxed Nature
+- Gyro Ball
+- Power Whip
+- Leech Seed
+- Protect
+
+Togekiss @ Leftovers
+Ability: Serene Grace
+EVs: 252 HP / 4 SpA / 252 Spe
+Timid Nature
+- Air Slash
+- Dazzling Gleam
+- Aura Sphere
+- Roost
+
+Garchomp @ Life Orb
+Ability: Rough Skin
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Earthquake
+- Outrage
+- Stone Edge
+- Swords Dance
