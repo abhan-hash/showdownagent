@@ -363,6 +363,9 @@ class PokemonAgent:
         self.foe_mem = {}
         self.prev = None
         self.prev_action = None
+        self.prev_move = ""
+        self.foe_switched_count = 0
+        self.foe_switched_on_phantom = False
         self.last_turn = -1
         self.foe_team_hp = {}
         self.weather = ""
@@ -443,6 +446,17 @@ class PokemonAgent:
             "turn": turn, "my_name": my.get("name"), "my_hp": my.get("hp_percent"),
             "foe_name": fname, "foe_hp": foe.get("hp_percent"), "my_maxhp": me.maxhp, "action": choice
         }
+        self.prev_action = choice
+        self.prev_move = ""
+        if choice and choice.startswith("move "):
+            try:
+                idx = int(choice.split()[1])
+                for m in obs.get("valid_moves", []) or []:
+                    if m.get("index") == idx:
+                        self.prev_move = norm(m.get("id") or m.get("name"))
+                        break
+            except Exception:
+                pass
         return choice
 
     def _decide_team_preview(self, obs):
@@ -665,6 +679,9 @@ class PokemonAgent:
         mem = self.foe_mem.setdefault(fname, FoeMemory())
         if self.prev and self.prev["foe_name"] != fname:
             self.foe_switch_turn = obs.get("turn", 0)
+            self.foe_switched_count = getattr(self, "foe_switched_count", 0) + 1
+            if getattr(self, "prev_move", "") == "phantomforce":
+                self.foe_switched_on_phantom = True
             mem.turns_active = 0
         elif self.prev:
             mem.turns_active += 1
@@ -1120,8 +1137,12 @@ class Ctx:
         if len(obs.get("valid_moves", [])) == 1 and self.me.item in ("choiceband", "choicespecs"):
             m_info = obs.get("valid_moves", [])[0]
             mult = m_info.get("type_multiplier", 1.0)
-            if mult < 0.9:
-                sw_margin = -0.02
+            if mult <= 0.05:
+                # Immune (e.g. Ghost vs Normal Snorlax, Dragon vs Fairy Togekiss) -> decisively switch out to reset Choice Band!
+                sw_margin = -0.35
+            elif mult < 0.9:
+                # Resisted (0.5x, 0.25x) -> switch out if bench has a better counter!
+                sw_margin = -0.05
 
         if best_sw is not None and best_sw[0] > best_move[0] + sw_margin:
             return best_sw[1]
@@ -1168,7 +1189,18 @@ class Ctx:
                 score -= 0.02 * neg
         if mid in ("outrage", "petaldance"):
             score -= self.P.get("lock_pen", 0.15)
-        if mid in ("phantomforce", "solarbeam", "fly", "dig", "bounce"):
+        if mid == "phantomforce":
+            foe_has_ghost_counter = False
+            for t in self.obs.get("foe_team", []) or []:
+                if t.get("name") != self.foe.name and (t.get("hp_percent", 0) or 0) > 0:
+                    t_sp = SP.get(t.get("name"), {})
+                    t_types = t_sp.get("types", [])
+                    if "Normal" in t_types or "Dark" in t_types:
+                        foe_has_ghost_counter = True
+                        break
+            if getattr(self.agent, "foe_switched_on_phantom", False) or (getattr(self.agent, "foe_switched_count", 0) > 0 and foe_has_ghost_counter):
+                score -= 0.25
+        elif mid in ("solarbeam", "fly", "dig", "bounce"):
             score -= 0.20
         return score
 
