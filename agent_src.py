@@ -1320,6 +1320,20 @@ class Ctx:
         if not allsc:
             return self.agent._fallback(obs)
 
+        # Specific Lead Defense against 50/50 Coin Flips and Choice Scarf OHKOs:
+        # 1. Dragapult Mirror: If we are Dragapult vs opposing Dragapult on full HP, staying in
+        #    is a pure 50/50 speed tie coin flip where losing the flip means an instant loss.
+        # 2. Garchomp Lead: Garchomp frequently carries Choice Scarf (Speed 499 > 421) and clicks Outrage,
+        #    which OHKOs Dragapult on Turn 1 if Garchomp is Scarf.
+        # In both cases, Scizor is our dedicated Steel-type Dragon/Ghost sponge that resists Outrage/Dragon Darts
+        # and traps the foe into locked moves while preserving our Dragapult at 100% HP!
+        if self.me.name == "Dragapult" and self.me.hp >= self.me.maxhp - 0.5:
+            if self.foe.name in ("Dragapult", "Garchomp") and self.foe.hp >= self.foe.maxhp - 0.5:
+                legal_sw_indices = [s.get("index") for s in obs.get("valid_switches", []) or []]
+                for idx, mon in self.bench:
+                    if mon.name == "Scizor" and mon.hp >= mon.maxhp - 0.5 and idx in legal_sw_indices:
+                        return "switch %d" % idx
+
         best_move = max(scores, key=lambda x: x[0]) if scores else None
         best_sw = max(sw_scores, key=lambda x: x[0]) if sw_scores else None
 
@@ -1416,7 +1430,32 @@ class Ctx:
             if mon.ability in ("clearbody", "innerfocus"):
                 intim = 0.0
             v = self.leaf(mon, mon.hp, self.foe.hp, "", None, intim)
-            v += 0.2 * (self.p_faster(mon) - 0.5)
+            p_fast = self.p_faster(mon)
+            v += 0.2 * (p_fast - 0.5)
+
+            # Bonus if this Pokémon has a priority move that KOs the low HP foe:
+            mon_moves = mon.moves if isinstance(mon.moves[0] if mon.moves else "", str) else [m for m, _ in mon.moves]
+            has_prio_ko = any(
+                MV.get(mid, {}).get("p", 0) > 0 and damage_rolls(mon, self.foe, mid, self.weather)[0] >= self.foe.hp
+                for mid in mon_moves if mid in MV and MV[mid]["c"] != "T"
+            )
+            if has_prio_ko:
+                v += 1.0
+
+            # Bonus if this Pokémon has unbroken Focus Sash:
+            if mon.item == "focussash" and mon.hp >= mon.maxhp - 0.5:
+                v += 0.40
+
+            # Penalty if this Pokémon risks getting outsped and OHKOed by the foe:
+            if p_fast < 0.95 and mon.item != "focussash":
+                foe_max_dmg = max(
+                    (damage_rolls(self.foe, mon, fmid, self.weather)[-1]
+                     for fmid, q in self.foe.moves if q >= 0.20 and MV.get(fmid, {}).get("c") != "T"),
+                    default=0.0
+                )
+                if foe_max_dmg >= mon.hp:
+                    v -= 0.80
+
             if best is None or v > best[0]:
                 best = (v, idx)
         return "switch %d" % best[1] if best else self.agent._fallback(self.obs)
