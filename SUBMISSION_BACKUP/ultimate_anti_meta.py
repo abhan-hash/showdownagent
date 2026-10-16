@@ -709,6 +709,7 @@ class PokemonAgent:
             if getattr(self, "prev_move", "") == "phantomforce":
                 self.foe_switched_on_phantom = True
             mem.turns_active = 0
+            mem.charging_move = None
         elif self.prev:
             mem.turns_active += 1
 
@@ -793,9 +794,10 @@ class PokemonAgent:
 
         my = obs.get("my_active") or {}
         lost = ((self.prev["my_hp"] or 0) - (my.get("hp_percent", 0) or 0)) if (self.prev and my) else 999
+        f_legal = (SP.get(fname) or SP.get(str(fname).capitalize()) or SP.get(str(fname).title()) or {}).get("legal", [])
         for ent in last_cands:
             mid = norm(ent.get("id") or ent.get("name") or ent.get("move")) if isinstance(ent, dict) else norm(ent)
-            if mid in TWO_TURN_MOVES:
+            if mid in TWO_TURN_MOVES and mid in f_legal and getattr(mem, "turns_active", 0) > 0:
                 if lost <= 1 or not getattr(mem, "charging_move", None):
                     mem.charging_move = mid
                     mem.charge_turn = current_turn
@@ -803,10 +805,27 @@ class PokemonAgent:
         foe_cond = str(foe.get("condition") or "").lower()
         foe_st = str(foe.get("status") or "").lower()
         for ttm in TWO_TURN_MOVES:
-            if ttm in foe_cond or ttm in foe_st:
+            if (ttm in foe_cond or ttm in foe_st) and ttm in f_legal:
                 mem.charging_move = ttm
                 mem.charge_turn = current_turn
                 break
+
+        # Infer semi-invulnerable charging move (e.g. Phantom Force, Bounce, Fly, Dig, Dive)
+        # when foe took 0 damage from a 100% accurate attack move and our active mon took 0 damage:
+        if self.prev and self.prev.get("foe_name") == fname and self.prev.get("my_name") == my.get("name"):
+            prev_m = getattr(self, "prev_move", "")
+            pmv = MV.get(prev_m)
+            if pmv and pmv["c"] != "T" and pmv.get("a", 100) >= 100:
+                foe_hp_prev = self.prev.get("foe_hp", 100)
+                foe_hp_now = foe.get("hp_percent", 100)
+                my_hp_prev = self.prev.get("my_hp", 100)
+                my_hp_now = my.get("hp_percent", 100)
+                if foe_hp_now >= foe_hp_prev - 0.5 and my_hp_now >= my_hp_prev - 0.5:
+                    for ttm in SEMI_INVULNERABLE_MOVES:
+                        if ttm in f_legal:
+                            mem.charging_move = ttm
+                            mem.charge_turn = current_turn - 1
+                            break
 
     def _infer_from_damage(self, obs, lost_pct, fname, mem):
         try:
@@ -1164,7 +1183,7 @@ class Ctx:
                         if f_acc >= 100 and min_dmg >= self.me.hp:
                             foe_guaranteed_lethal = True
 
-            if foe_lethal:
+            if foe_lethal and getattr(self, "foe_charging_move", None) not in SEMI_INVULNERABLE_MOVES:
                 best_prio = None
                 max_prio_dmg = 0.0
                 for m in obs.get("valid_moves", []) or []:
@@ -1336,9 +1355,11 @@ class Ctx:
             if rl[-1] >= self.me.hp or rl[8] >= self.me.hp * 0.88:
                 is_tt_lethal = True
 
-        if is_tt_lethal and target_tt and best_sw is not None:
+        if target_tt and best_sw is not None:
             if getattr(self, "foe_charging_move", None) in SEMI_INVULNERABLE_MOVES:
                 sw_margin = min(sw_margin, -0.30)
+            elif is_tt_lethal:
+                sw_margin = min(sw_margin, -0.10)
             else:
                 sw_margin = min(sw_margin, -0.05)
 
@@ -1348,25 +1369,30 @@ class Ctx:
         # Never switch out if our active Pokémon can achieve a lethal KO on the foe this turn:
         # If any valid move KOs the foe, and we execute before taking lethal damage (either we are
         # faster, have priority, or survive the foe's hit): take the guaranteed KO!
+        # EXCEPTION: If the foe is charging or using a two-turn move (e.g. phantomforce, bounce, solarbeam),
+        # we must always evaluate whether switching is better or eating the attack is better!
+        # Furthermore, if the foe is semi-invulnerable, normal moves cannot hit them this turn anyway!
         can_guaranteed_ko = False
-        foe_max_dmg = 0.0
-        for fmid, q in self.foe.moves:
-            fmv = MV.get(fmid)
-            if fmv and fmv["c"] != "T":
-                frl = damage_rolls(self.foe, self.me, fmid, self.weather)
-                foe_max_dmg = max(foe_max_dmg, frl[-1])
+        foe_charging = getattr(self, "foe_charging_move", None)
+        if not target_tt and not foe_charging:
+            foe_max_dmg = 0.0
+            for fmid, q in self.foe.moves:
+                fmv = MV.get(fmid)
+                if fmv and fmv["c"] != "T":
+                    frl = damage_rolls(self.foe, self.me, fmid, self.weather)
+                    foe_max_dmg = max(foe_max_dmg, frl[-1])
 
-        p_me_faster = self.p_faster(self.me)
-        for m in obs.get("valid_moves", []) or []:
-            mid = norm(m.get("id") or m.get("name"))
-            mv = MV.get(mid)
-            if mv and mv["c"] != "T":
-                rl = damage_rolls(self.me, self.foe, mid, self.weather)
-                if rl[4] >= self.foe.hp:
-                    pri = mv.get("p", 0)
-                    if pri > 0 or p_me_faster >= 0.5 or foe_max_dmg < self.me.hp:
-                        can_guaranteed_ko = True
-                        break
+            p_me_faster = self.p_faster(self.me)
+            for m in obs.get("valid_moves", []) or []:
+                mid = norm(m.get("id") or m.get("name"))
+                mv = MV.get(mid)
+                if mv and mv["c"] != "T":
+                    rl = damage_rolls(self.me, self.foe, mid, self.weather)
+                    if rl[4] >= self.foe.hp:
+                        pri = mv.get("p", 0)
+                        if pri > 0 or p_me_faster >= 0.5 or foe_max_dmg < self.me.hp:
+                            can_guaranteed_ko = True
+                            break
 
         if can_guaranteed_ko:
             best_sw = None
@@ -1604,7 +1630,7 @@ class Ctx:
                             pr_ = po * pdm * ph_m * pdf * ph_f
                             if pr_ <= 1e-7:
                                 continue
-                            dmg_m = (dm * hit_m if not protect else 0.0) if not (self.foe_charging_move in SEMI_INVULNERABLE_MOVES and not is_status) else 0.0
+                            dmg_m = (dm * hit_m if not protect else 0.0) if not (me_first and self.foe_charging_move in SEMI_INVULNERABLE_MOVES and not is_status) else 0.0
                             eff_my_protect = my_protect and (fmid != "phantomforce")
                             dmg_f = df * hit_f if not eff_my_protect else 0.0
 

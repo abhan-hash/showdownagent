@@ -238,7 +238,9 @@ function buildObservation(turn, isPreview, req, mySideData, foeSideData) {
       types: foeTypes,
       hp_percent: foeHp,
       status: foeStatus,
-      boosts: foeBoosts
+      boosts: foeBoosts,
+      last_move: foeSideData.lastMove || '',
+      moves: foeSideData.movesUsed || []
     },
     my_team: myTeam,
     valid_moves: validMoves,
@@ -287,6 +289,7 @@ async function playOne(w1, w2, t1, t2, swap, stats, traceLabel) {
           sideData[sid].activeHp = parseHpPercent(cond);
           sideData[sid].activeStatus = parseStatus(cond);
           sideData[sid].activeBoosts = {};
+          sideData[sid].lastMove = '';
         } else if (line.startsWith('|-damage|') || line.startsWith('|-heal|')) {
           const parts = line.split('|');
           const sid = parts[2].slice(0, 2);
@@ -313,6 +316,15 @@ async function playOne(w1, w2, t1, t2, swap, stats, traceLabel) {
           const stat = parts[3];
           const amt = parseInt(parts[4]) || 1;
           sideData[sid].activeBoosts[stat] = (sideData[sid].activeBoosts[stat] || 0) - amt;
+        } else if (line.startsWith('|move|')) {
+          const parts = line.split('|');
+          const sid = parts[2].slice(0, 2);
+          const moveName = parts[3];
+          if (sideData[sid]) {
+            sideData[sid].lastMove = moveName;
+            if (!sideData[sid].movesUsed) sideData[sid].movesUsed = [];
+            if (!sideData[sid].movesUsed.includes(moveName)) sideData[sid].movesUsed.push(moveName);
+          }
         } else if (line.startsWith('sideupdate')) {
           const sid = lines[i + 1].trim();
           const reqLine = lines[i + 2];
@@ -432,6 +444,9 @@ async function main() {
     }
 
     const res = await playOne(w1, w2, T1, T2, swap, [stats1, stats2], trace);
+    if (args.verbose) {
+      console.error(res.log);
+    }
     if (res.a1won) {
       a1Wins++;
     } else if (args['loss-log']) {
