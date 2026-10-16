@@ -514,7 +514,17 @@ class PokemonAgent:
                             foe_best_dmg = dmg_pct
 
                 w_str = "sand" if has_sand else ""
-                faster = (eff_speed(me, w_str) > eff_speed(foe, w_str))
+                my_spe = eff_speed(me, w_str)
+                foe_spe = eff_speed(foe, w_str)
+                faster = (my_spe > foe_spe)
+                speed_tie = (my_spe == foe_spe)
+
+                foe_bypasses_sash = any(
+                    (MV.get(norm(m if isinstance(m, str) else m[0]), {}).get("mh") or
+                     norm(m if isinstance(m, str) else m[0]) in {"uturn", "voltswitch", "flipturn"})
+                    for m in foe.moves
+                )
+                effective_sash = has_sash and not foe_bypasses_sash
 
                 if faster:
                     if my_best_dmg >= 1.0:
@@ -523,8 +533,15 @@ class PokemonAgent:
                         sc = 1.5 if foe_best_dmg < 1.0 else 0.5
                     else:
                         sc = -1.0 if foe_best_dmg >= 1.0 else 0.0
+                elif speed_tie:
+                    if my_best_dmg >= 1.0:
+                        sc = 2.0 if foe_best_dmg < 1.0 else 1.0
+                    elif my_best_dmg >= 0.5:
+                        sc = 1.0 if foe_best_dmg < 1.0 else 0.0
+                    else:
+                        sc = -1.5 if foe_best_dmg >= 1.0 else -0.5
                 else:
-                    if has_sash:
+                    if effective_sash:
                         if my_best_dmg >= 1.0:
                             sc = 2.0
                         else:
@@ -1207,10 +1224,12 @@ class Ctx:
                         chip_secures_revenge = False
                         can_revenge_anyway = False
 
+                        bench_has_safe_ohko_counter = False
                         for b in living_bench:
                             b_faster = (self.p_faster(b) >= 0.5)
                             b_safe_dmg = 0.0
                             b_prio_safe_dmg = 0.0
+                            b_can_ohko = False
                             moves_list = b.moves if isinstance(b.moves[0] if b.moves else "", str) else [bm for bm, _ in b.moves]
                             for b_mid in moves_list:
                                 b_mv = MV.get(b_mid)
@@ -1218,9 +1237,20 @@ class Ctx:
                                     continue
                                 b_rl = damage_rolls(b, self.foe, b_mid, self.weather)
                                 b_dmg = b_rl[4]
+                                if b_rl[8] >= self.foe.hp:
+                                    b_can_ohko = True
                                 if b_mv.get("p", 0) > 0:
                                     b_prio_safe_dmg = max(b_prio_safe_dmg, b_dmg)
                                 b_safe_dmg = max(b_safe_dmg, b_dmg)
+
+                            f_max_on_b = max(
+                                (damage_rolls(self.foe, b, fmid, self.weather)[-1]
+                                 for fmid, q in self.foe.moves if q >= 0.40 and MV.get(fmid, {}).get("c") != "T"),
+                                default=999
+                            )
+                            b_survives = (b.hp > f_max_on_b) or (b.item == "focussash" and b.hp >= b.maxhp - 0.5 and not self.sand)
+                            if b_faster and b_can_ohko and b_survives:
+                                bench_has_safe_ohko_counter = True
 
                             b_kills_chipped = (b_faster and b_safe_dmg >= hp_chipped) or (b_prio_safe_dmg >= hp_chipped)
                             b_kills_unchipped = (not foe_sash_risk) and ((b_faster and b_safe_dmg >= hp_unchipped) or (b_prio_safe_dmg >= hp_unchipped))
@@ -1239,7 +1269,8 @@ class Ctx:
                             if b_kills_unchipped and not foe_threatens_b:
                                 can_revenge_anyway = True
 
-                        if foe_guaranteed_lethal or (chip_secures_revenge and not can_revenge_anyway):
+                        self.bench_has_safe_ohko_counter = bench_has_safe_ohko_counter
+                        if (foe_guaranteed_lethal or (chip_secures_revenge and not can_revenge_anyway)) and not bench_has_safe_ohko_counter:
                             # Dying with chip guarantees a safe revenge kill, while dying without chip risks losing our bench mon.
                             # Priority chip is strictly dominant over gambling on a miss!
                             for i, (sc, cmd, mid) in enumerate(scores):
@@ -1248,11 +1279,11 @@ class Ctx:
                                 else:
                                     scores[i][0] = sc - 0.60
                         else:
-                            # Bench can either revenge kill regardless, or cannot revenge kill even with chip.
-                            # Priority chip is preferred for safety, but 0-priority lethal KO moves are not penalized.
+                            # Bench can either revenge kill regardless, or cannot revenge kill even with chip,
+                            # or bench has a safe OHKO counter that preserves active mon upon switching.
                             for i, (sc, cmd, mid) in enumerate(scores):
                                 if mid == best_prio_mid:
-                                    scores[i][0] = sc + 0.35
+                                    scores[i][0] = sc + (0.15 if bench_has_safe_ohko_counter else 0.35)
                                 else:
                                     mv = MV.get(mid)
                                     if mv and mv.get("p", 0) <= foe_max_pri:
@@ -1310,6 +1341,9 @@ class Ctx:
                 sw_margin = min(sw_margin, -0.30)
             else:
                 sw_margin = min(sw_margin, -0.05)
+
+        if getattr(self, "bench_has_safe_ohko_counter", False) and best_sw is not None:
+            sw_margin = min(sw_margin, -0.20)
 
         # Never switch out if our active Pokémon can achieve a lethal KO on the foe this turn:
         # If any valid move KOs the foe, and we execute before taking lethal damage (either we are
@@ -1726,6 +1760,11 @@ class Ctx:
         intim_p = self._intim_prob()
         if mon.ability in ("clearbody", "innerfocus", "oblivious", "owntempo", "scrappy"):
             intim_p = 0.0
+        mon_moves = mon.moves if isinstance(mon.moves[0] if mon.moves else "", str) else [m for m, _ in mon.moves]
+        can_ohko = any(
+            damage_rolls(mon, foe, mid, self.weather)[8] >= foe.hp
+            for mid in mon_moves if mid in MV and MV[mid]["c"] != "T"
+        )
         total = 0.0
         worst = 9e9
         for w, fa in self.foe_dist:
@@ -1754,9 +1793,10 @@ class Ctx:
                         if hp > 0 and d > 0:
                             best_t, prio_k = self._best_dmg(mon, foe, foe.hp, intim_p)
                             p_mon_faster = self.p_faster(mon)
-                            if (best_t > 1.0 or p_mon_faster < 0.5) and not prio_k and hp <= d:
-                                v += pd * ph * (self.leaf(mon, 0.0, foe.hp, "", None, intim_p) - 0.25)
-                                continue
+                            if not prio_k and not (can_ohko and p_mon_faster >= 0.5):
+                                if (best_t > 1.0 or p_mon_faster < 0.5) and hp <= d:
+                                    v += pd * ph * (self.leaf(mon, 0.0, foe.hp, "", None, intim_p) - 0.25)
+                                    continue
                         v += pd * ph * self.leaf(mon, hp, foe.hp, "", None, intim_p)
             elif kind == "util":
                 foe_boost = 0

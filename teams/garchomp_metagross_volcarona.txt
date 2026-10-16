@@ -1,0 +1,26 @@
+Garchomp @ Life Orb
+Ability: Rough Skin
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Earthquake
+- Outrage
+- Swords Dance
+- Stone Edge
+
+Metagross @ Assault Vest
+Ability: Clear Body
+EVs: 252 HP / 252 Atk / 4 SpD
+Adamant Nature
+- Meteor Mash
+- Earthquake
+- Bullet Punch
+- Zen Headbutt
+
+Volcarona @ Heavy-Duty Boots
+Ability: Flame Body
+EVs: 252 SpA / 4 SpD / 252 Spe
+Timid Nature
+- Quiver Dance
+- Bug Buzz
+- Fiery Dance
+- Giga Drain

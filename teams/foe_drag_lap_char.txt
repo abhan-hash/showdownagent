@@ -1,0 +1,26 @@
+Dragapult @ Choice Band
+Ability: Infiltrator
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Dragon Darts
+- Phantom Force
+- Flamethrower
+- U-turn
+
+Lapras @ Leftovers
+Ability: Water Absorb
+EVs: 252 HP / 252 SpA / 4 SpD
+Modest Nature
+- Freeze-Dry
+- Hydro Pump
+- Thunderbolt
+- Ice Beam
+
+Charizard @ Choice Specs
+Ability: Blaze
+EVs: 252 SpA / 4 SpD / 252 Spe
+Timid Nature
+- Flamethrower
+- Air Slash
+- Focus Blast
+- Dragon Pulse
