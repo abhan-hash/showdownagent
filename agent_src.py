@@ -1320,20 +1320,6 @@ class Ctx:
         if not allsc:
             return self.agent._fallback(obs)
 
-        # Specific Lead Defense against 50/50 Coin Flips and Choice Scarf OHKOs:
-        # 1. Dragapult Mirror: If we are Dragapult vs opposing Dragapult on full HP, staying in
-        #    is a pure 50/50 speed tie coin flip where losing the flip means an instant loss.
-        # 2. Garchomp Lead: Garchomp frequently carries Choice Scarf (Speed 499 > 421) and clicks Outrage,
-        #    which OHKOs Dragapult on Turn 1 if Garchomp is Scarf.
-        # In both cases, Scizor is our dedicated Steel-type Dragon/Ghost sponge that resists Outrage/Dragon Darts
-        # and traps the foe into locked moves while preserving our Dragapult at 100% HP!
-        if self.me.name == "Dragapult" and self.me.hp >= self.me.maxhp - 0.5:
-            if self.foe.name in ("Dragapult", "Garchomp") and self.foe.hp >= self.foe.maxhp - 0.5:
-                legal_sw_indices = [s.get("index") for s in obs.get("valid_switches", []) or []]
-                for idx, mon in self.bench:
-                    if mon.name == "Scizor" and mon.hp >= mon.maxhp - 0.5 and idx in legal_sw_indices:
-                        return "switch %d" % idx
-
         best_move = max(scores, key=lambda x: x[0]) if scores else None
         best_sw = max(sw_scores, key=lambda x: x[0]) if sw_scores else None
 

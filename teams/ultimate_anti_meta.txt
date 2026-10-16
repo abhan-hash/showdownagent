@@ -1,12 +1,3 @@
-Dragapult @ Choice Band
-Ability: Infiltrator
-EVs: 252 Atk / 4 SpD / 252 Spe
-Jolly Nature
-- Dragon Darts
-- Phantom Force
-- Flamethrower
-- U-turn
-
 Greninja @ Focus Sash
 Ability: Protean
 EVs: 252 SpA / 4 SpD / 252 Spe
@@ -15,6 +6,15 @@ Timid Nature
 - Dark Pulse
 - Hydro Pump
 - Water Shuriken
+
+Dragapult @ Choice Band
+Ability: Infiltrator
+EVs: 252 Atk / 4 SpD / 252 Spe
+Jolly Nature
+- Dragon Darts
+- Phantom Force
+- Flamethrower
+- U-turn
 
 Scizor @ Metal Coat
 Ability: Technician
