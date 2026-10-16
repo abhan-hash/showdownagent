@@ -261,9 +261,10 @@ async function playOne(w1, w2, t1, t2, swap, stats, traceLabel) {
   };
 
   const pendingRequests = [];
-
+  const battleChunks = [];
   const battlePromise = (async () => {
     for await (const chunk of stream) {
+      battleChunks.push(chunk);
       const lines = chunk.split('\n');
       for (let i = 0; i < lines.length; i++) {
         const line = lines[i];
@@ -384,7 +385,7 @@ async function playOne(w1, w2, t1, t2, swap, stats, traceLabel) {
   await battlePromise;
   const p1won = winner === 'Alice';
   const a1won = swap ? !p1won : p1won;
-  return { a1won, turns: currentTurn };
+  return { a1won, turns: currentTurn, log: battleChunks.join('\n') };
 }
 
 async function main() {
@@ -430,9 +431,39 @@ async function main() {
       T2 = pairB;
     }
 
-    const { a1won, turns } = await playOne(w1, w2, T1, T2, swap, [stats1, stats2], trace);
-    if (a1won) a1Wins++;
-    totalTurns += turns;
+    const res = await playOne(w1, w2, T1, T2, swap, [stats1, stats2], trace);
+    if (res.a1won) {
+      a1Wins++;
+    } else if (args['loss-log']) {
+      try {
+        const ourSid = swap ? 'p2' : 'p1';
+        const foeSid = swap ? 'p1' : 'p2';
+        const logStr = res.log || '';
+        const crits = (logStr.match(new RegExp(`\\|-crit\\|${ourSid}`, 'g')) || []).length;
+        const misses = (logStr.match(new RegExp(`\\|-miss\\|${ourSid}`, 'g')) || []).length;
+        const flinches = (logStr.match(new RegExp(`\\|cant\\|${ourSid}[^|]*\\|flinch`, 'g')) || []).length;
+        const pars = (logStr.match(new RegExp(`\\|cant\\|${ourSid}[^|]*\\|par`, 'g')) || []).length;
+        const frzs = (logStr.match(new RegExp(`\\|cant\\|${ourSid}[^|]*\\|frz`, 'g')) || []).length;
+        const ourTeamNames = Teams.unpack(T1).map(p => p.name);
+        const foeTeamNames = Teams.unpack(T2).map(p => p.name);
+
+        const record = {
+          matchIndex: i + 1,
+          turns: res.turns,
+          ourTeam: ourTeamNames,
+          foeTeam: foeTeamNames,
+          critsOnUs: crits,
+          missesByUs: misses,
+          flinchesOnUs: flinches,
+          paralysisOnUs: pars,
+          freezeOnUs: frzs,
+          isRng: (crits > 0 || misses > 0 || flinches > 0 || pars > 0 || frzs > 0),
+          log: logStr
+        };
+        fs.appendFileSync(args['loss-log'], JSON.stringify(record) + '\n');
+      } catch (e) {}
+    }
+    totalTurns += res.turns;
   }
 
   w1.kill();

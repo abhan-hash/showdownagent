@@ -1151,13 +1151,26 @@ class Ctx:
 
                 if best_prio is not None and max_prio_dmg > 0:
                     best_prio_mid = best_prio[1]
-                    for i, (sc, cmd, mid) in enumerate(scores):
-                        if mid == best_prio_mid:
-                            scores[i][0] = sc + 1.0
-                        else:
-                            mv = MV.get(mid)
-                            if mv and mv.get("p", 0) <= foe_max_pri:
+                    prio_is_lethal = (max_prio_dmg >= self.foe.hp)
+                    has_bench = any(m.hp > 0 for _, m in self.bench)
+
+                    if prio_is_lethal:
+                        for i, (sc, cmd, mid) in enumerate(scores):
+                            if mid == best_prio_mid:
+                                scores[i][0] = sc + 1.0
+                            else:
                                 scores[i][0] = sc - 1.0
+                    elif has_bench:
+                        for i, (sc, cmd, mid) in enumerate(scores):
+                            if mid == best_prio_mid:
+                                scores[i][0] = sc + 0.35
+                            else:
+                                mv = MV.get(mid)
+                                if mv and mv.get("p", 0) <= foe_max_pri:
+                                    m_rl = damage_rolls(self.me, self.foe, mid, self.weather)
+                                    can_ko = (m_rl[-1] >= self.foe.hp)
+                                    if not can_ko:
+                                        scores[i][0] = sc - 0.5
 
         sw_scores = []
         for idx, mon in self.bench:
@@ -1209,7 +1222,41 @@ class Ctx:
             else:
                 sw_margin = min(sw_margin, -0.05)
 
+        # Never switch out if our active Pokémon can achieve a lethal KO on the foe this turn:
+        # If any valid move KOs the foe, and we execute before taking lethal damage (either we are
+        # faster, have priority, or survive the foe's hit): take the guaranteed KO!
+        can_guaranteed_ko = False
+        foe_max_dmg = 0.0
+        for fmid, q in self.foe.moves:
+            fmv = MV.get(fmid)
+            if fmv and fmv["c"] != "T":
+                frl = damage_rolls(self.foe, self.me, fmid, self.weather)
+                foe_max_dmg = max(foe_max_dmg, frl[-1])
+
+        p_me_faster = self.p_faster(self.me)
+        for m in obs.get("valid_moves", []) or []:
+            mid = norm(m.get("id") or m.get("name"))
+            mv = MV.get(mid)
+            if mv and mv["c"] != "T":
+                rl = damage_rolls(self.me, self.foe, mid, self.weather)
+                if rl[4] >= self.foe.hp:
+                    pri = mv.get("p", 0)
+                    if pri > 0 or p_me_faster >= 0.5 or foe_max_dmg < self.me.hp:
+                        can_guaranteed_ko = True
+                        break
+
+        if can_guaranteed_ko:
+            best_sw = None
+
         if best_sw is not None and best_sw[0] > best_move[0] + sw_margin:
+            charging = getattr(self, "foe_charging_move", None)
+            if self.p_faster(self.me) >= 0.5 and charging not in SEMI_INVULNERABLE_MOVES:
+                for m in obs.get("valid_moves", []) or []:
+                    pmid = norm(m.get("id") or m.get("name"))
+                    if pmid in ("uturn", "voltswitch", "flipturn"):
+                        p_rl = damage_rolls(self.me, self.foe, pmid, self.weather)
+                        if p_rl[8] > 0:
+                            return "move %d" % m.get("index", 1)
             return best_sw[1]
         return best_move[1]
 
@@ -1249,24 +1296,97 @@ class Ctx:
             neg = sum(-x for x in mv["sb"].values() if x < 0)
             my_rl = damage_rolls(self.me, self.foe, mid, self.weather)
             if my_rl[8] < self.foe.hp:
-                score -= 0.08 * neg
+                score -= 0.03 * neg
             else:
-                score -= 0.02 * neg
+                score -= 0.01 * neg
         if mid in ("outrage", "petaldance"):
             score -= self.P.get("lock_pen", 0.15)
-        if mid == "phantomforce":
-            foe_has_ghost_counter = False
-            for t in self.obs.get("foe_team", []) or []:
-                if t.get("name") != self.foe.name and (t.get("hp_percent", 0) or 0) > 0:
-                    t_sp = SP.get(t.get("name"), {})
-                    t_types = t_sp.get("types", [])
-                    if "Normal" in t_types or "Dark" in t_types:
-                        foe_has_ghost_counter = True
+        if mid in TWO_TURN_MOVES:
+            # If any 1-turn move can also achieve a lethal KO, heavily penalize the 2-turn move
+            can_1turn_ko = False
+            for m in self.obs.get("valid_moves", []) or []:
+                omid = norm(m.get("id") or m.get("name"))
+                if omid not in TWO_TURN_MOVES:
+                    omv = MV.get(omid)
+                    if omv and omv["c"] != "T":
+                        orl = damage_rolls(self.me, self.foe, omid, self.weather)
+                        if orl[4] >= self.foe.hp:
+                            can_1turn_ko = True
+                            break
+            if can_1turn_ko:
+                score -= 0.50
+
+            if mid == "phantomforce":
+                foe_has_ghost_counter = False
+                for t in self.obs.get("foe_team", []) or []:
+                    if t.get("name") != self.foe.name and (t.get("hp_percent", 0) or 0) > 0:
+                        t_sp = SP.get(t.get("name"), {})
+                        t_types = t_sp.get("types", [])
+                        if "Normal" in t_types or "Dark" in t_types:
+                            foe_has_ghost_counter = True
+                            break
+                if getattr(self.agent, "foe_switched_on_phantom", False) or (getattr(self.agent, "foe_switched_count", 0) > 0 and foe_has_ghost_counter):
+                    score -= 0.25
+            elif mid in ("solarbeam", "fly", "dig", "bounce"):
+                score -= 0.20
+
+        # Race threshold check:
+        # If foe can 2HKO us, but a move cannot 2HKO the foe (requires 3+ hits):
+        # penalize the insufficient move so we prefer the higher-damage move that can win the damage race!
+        foe_2hko_us = False
+        for fmid, q in self.foe.moves:
+            frl = damage_rolls(self.foe, self.me, fmid, self.weather)
+            if frl[8] * 2 >= self.me.hp:
+                foe_2hko_us = True
+                break
+        if foe_2hko_us:
+            my_rl = damage_rolls(self.me, self.foe, mid, self.weather)
+            if my_rl[8] > 0 and my_rl[8] * 2 < self.foe.hp:
+                for om in self.obs.get("valid_moves", []) or []:
+                    omid = norm(om.get("id") or om.get("name"))
+                    if omid != mid:
+                        orl = damage_rolls(self.me, self.foe, omid, self.weather)
+                        if orl[8] * 2 >= self.foe.hp:
+                            score -= 0.20
+                            break
+
+        # Choice Band / Choice Specs Lock Quality Rule:
+        # If holding Choice Band, locking into a Special move (e.g. Flamethrower on Dragapult)
+        # when a Physical move can ALSO achieve a lethal KO is a blunder because it leaves us
+        # locked into an unboosted attack against the opponent's next Pokémon!
+        has_bench = any(m.hp > 0 for _, m in self.bench)
+        if self.me.item == "choiceband" and mv["c"] == "S":
+            phys_ko = False
+            for m in self.obs.get("valid_moves", []) or []:
+                pmid = norm(m.get("id") or m.get("name"))
+                pmv = MV.get(pmid)
+                if pmv and pmv["c"] == "P":
+                    prl = damage_rolls(self.me, self.foe, pmid, self.weather)
+                    if prl[4] >= self.foe.hp:
+                        phys_ko = True
                         break
-            if getattr(self.agent, "foe_switched_on_phantom", False) or (getattr(self.agent, "foe_switched_count", 0) > 0 and foe_has_ghost_counter):
-                score -= 0.25
-        elif mid in ("solarbeam", "fly", "dig", "bounce"):
-            score -= 0.20
+            if phys_ko:
+                score -= 0.60
+            elif has_bench:
+                my_rl = damage_rolls(self.me, self.foe, mid, self.weather)
+                if my_rl[-1] < self.foe.hp:
+                    score -= 0.35
+        elif self.me.item == "choicespecs" and mv["c"] == "P":
+            spec_ko = False
+            for m in self.obs.get("valid_moves", []) or []:
+                pmid = norm(m.get("id") or m.get("name"))
+                pmv = MV.get(pmid)
+                if pmv and pmv["c"] == "S":
+                    prl = damage_rolls(self.me, self.foe, pmid, self.weather)
+                    if prl[4] >= self.foe.hp:
+                        spec_ko = True
+                        break
+            if spec_ko:
+                score -= 0.60
+            elif has_bench:
+                my_rl = damage_rolls(self.me, self.foe, mid, self.weather)
+                if my_rl[-1] < self.foe.hp:
+                    score -= 0.35
         return score
 
     def outcome_move(self, mid, mv, fa):
@@ -1297,6 +1417,19 @@ class Ctx:
 
         sucker = bool(fmv and fmv.get("sucker"))
         p_first = self.p_faster(me)
+
+        is_pivot = mid in ("uturn", "voltswitch", "flipturn")
+        best_bench_mon = None
+        b_rl = None
+        if is_pivot and self.bench:
+            best_v = -999.0
+            for idx, b in self.bench:
+                v_b = self.leaf(b, b.hp, foe.hp)
+                if v_b > best_v:
+                    best_v = v_b
+                    best_bench_mon = b
+            if best_bench_mon and fmid and fmv:
+                b_rl = damage_rolls(foe, best_bench_mon, fmid, self.weather)
 
         if my_pri > f_pri:
             p_me_first = 1.0
@@ -1406,20 +1539,33 @@ class Ctx:
                                         # Lethal hit!
                                         # Subcase A: Foe survives via Focus Sash (prob foe_sash_p)
                                         if foe_sash_p > 0:
-                                            f_hp_s = 1.0
-                                            m_hp_s = me.hp
-                                            if hit_m and mv.get("ct"):
-                                                m_hp_s -= contact_chip
-                                            if not sucker and dmg_f > 0:
-                                                if my_sash_p > 0 and dmg_f >= m_hp_s and not (fmv and fmv.get("mh")):
-                                                    m_hp_s = 1.0
-                                                else:
-                                                    m_hp_s = max(0.0, m_hp_s - dmg_f)
-                                            f_hp_s = min(foe.maxhp, f_hp_s + heal_foe)
-                                            if m_hp_s > 0 and hit_m:
-                                                m_hp_s = max(0.0, m_hp_s - recoil)
-                                            st = my_new_status if (m_hp_s > 0) else ""
-                                            v_sash = self.leaf(me, m_hp_s, f_hp_s, st or me.status, None, 0.0, foe_boost_atk, my_boost_atk, foe_new_status)
+                                            if is_pivot and best_bench_mon:
+                                                b_df = df if not b_rl else (df * b_rl[8] / max(1.0, f_rl[8]))
+                                                b_dmg_f = b_df * hit_f if not eff_my_protect else 0.0
+                                                b_hp = max(0.0, best_bench_mon.hp - b_dmg_f)
+                                                f_hp_s = min(foe.maxhp, 1.0 + heal_foe)
+                                                v_sash = self.leaf(best_bench_mon, b_hp, f_hp_s, "", None, 0.0, foe_boost_atk, 0, "")
+                                            else:
+                                                f_hp_s = 1.0
+                                                m_hp_s = me.hp
+                                                if hit_m and mv.get("ct"):
+                                                    m_hp_s -= contact_chip
+                                                eff_dmg_f = dmg_f
+                                                if fmv and mv.get("sb"):
+                                                    if fmv["c"] == "P" and mv["sb"].get("def", 0) < 0:
+                                                        eff_dmg_f *= 1.5
+                                                    elif fmv["c"] == "S" and mv["sb"].get("spd", 0) < 0:
+                                                        eff_dmg_f *= 1.5
+                                                if not sucker and eff_dmg_f > 0:
+                                                    if my_sash_p > 0 and eff_dmg_f >= m_hp_s and not (fmv and fmv.get("mh")):
+                                                        m_hp_s = 1.0
+                                                    else:
+                                                        m_hp_s = max(0.0, m_hp_s - eff_dmg_f)
+                                                f_hp_s = min(foe.maxhp, f_hp_s + heal_foe)
+                                                if m_hp_s > 0 and hit_m:
+                                                    m_hp_s = max(0.0, m_hp_s - recoil)
+                                                st = my_new_status if (m_hp_s > 0) else ""
+                                                v_sash = self.leaf(me, m_hp_s, f_hp_s, st or me.status, None, 0.0, foe_boost_atk, my_boost_atk, foe_new_status)
                                         else:
                                             v_sash = 0.0
 
@@ -1436,21 +1582,34 @@ class Ctx:
                                     else:
                                         # Non-lethal attack
                                         f_hp = max(0.0, foe.hp - dmg_m)
-                                        m_hp = me.hp
-                                        if hit_m and mv.get("ct"):
-                                            m_hp -= contact_chip
-                                        if f_hp > 0:
-                                            if not sucker and dmg_f > 0:
-                                                if my_sash_p > 0 and dmg_f >= m_hp and not (fmv and fmv.get("mh")):
-                                                    m_hp = 1.0
-                                                else:
-                                                    m_hp = max(0.0, m_hp - dmg_f)
+                                        if is_pivot and best_bench_mon:
+                                            b_df = df if not b_rl else (df * b_rl[8] / max(1.0, f_rl[8]))
+                                            b_dmg_f = b_df * hit_f if not eff_my_protect else 0.0
+                                            b_hp = max(0.0, best_bench_mon.hp - b_dmg_f)
                                             f_hp = min(foe.maxhp, f_hp + heal_foe)
-                                        if m_hp > 0 and hit_m:
-                                            m_hp = max(0.0, m_hp - recoil)
-                                        m_hp = max(0.0, m_hp)
-                                        st = my_new_status if (m_hp > 0) else ""
-                                        total += pr_ * self.leaf(me, m_hp, f_hp, st or me.status, None, 0.0, foe_boost_atk, my_boost_atk, foe_new_status)
+                                            total += pr_ * self.leaf(best_bench_mon, b_hp, f_hp, "", None, 0.0, foe_boost_atk, 0, "")
+                                        else:
+                                            m_hp = me.hp
+                                            if hit_m and mv.get("ct"):
+                                                m_hp -= contact_chip
+                                            if f_hp > 0:
+                                                eff_dmg_f = dmg_f
+                                                if fmv and mv.get("sb"):
+                                                    if fmv["c"] == "P" and mv["sb"].get("def", 0) < 0:
+                                                        eff_dmg_f *= 1.5
+                                                    elif fmv["c"] == "S" and mv["sb"].get("spd", 0) < 0:
+                                                        eff_dmg_f *= 1.5
+                                                if not sucker and eff_dmg_f > 0:
+                                                    if my_sash_p > 0 and eff_dmg_f >= m_hp and not (fmv and fmv.get("mh")):
+                                                        m_hp = 1.0
+                                                    else:
+                                                        m_hp = max(0.0, m_hp - eff_dmg_f)
+                                                f_hp = min(foe.maxhp, f_hp + heal_foe)
+                                            if m_hp > 0 and hit_m:
+                                                m_hp = max(0.0, m_hp - recoil)
+                                            m_hp = max(0.0, m_hp)
+                                            st = my_new_status if (m_hp > 0) else ""
+                                            total += pr_ * self.leaf(me, m_hp, f_hp, st or me.status, None, 0.0, foe_boost_atk, my_boost_atk, foe_new_status)
                             else:
                                 # Foe moves first
                                 if sucker and is_status:
@@ -1490,14 +1649,18 @@ class Ctx:
                                             total += pr_ * (foe_sash_p * v_sash + (1.0 - foe_sash_p) * v_no)
                                         else:
                                             f_hp = max(0.0, foe.hp - dmg_m)
-                                            if hit_m and mv.get("ct"):
-                                                m_hp -= contact_chip
-                                            if m_hp > 0 and hit_m:
-                                                m_hp = max(0.0, m_hp - recoil)
-                                            m_hp = max(0.0, m_hp)
-                                            f_hp = min(foe.maxhp, f_hp + heal_foe) if f_hp > 0 else 0.0
-                                            st = my_new_status if (m_hp > 0) else ""
-                                            total += pr_ * self.leaf(me, m_hp, f_hp, st or me.status, None, 0.0, foe_boost_atk, my_boost_atk, foe_new_status)
+                                            if is_pivot and best_bench_mon:
+                                                f_hp = min(foe.maxhp, f_hp + heal_foe) if f_hp > 0 else 0.0
+                                                total += pr_ * self.leaf(best_bench_mon, best_bench_mon.hp, f_hp, "", None, 0.0, foe_boost_atk, 0, "")
+                                            else:
+                                                if hit_m and mv.get("ct"):
+                                                    m_hp -= contact_chip
+                                                if m_hp > 0 and hit_m:
+                                                    m_hp = max(0.0, m_hp - recoil)
+                                                m_hp = max(0.0, m_hp)
+                                                f_hp = min(foe.maxhp, f_hp + heal_foe) if f_hp > 0 else 0.0
+                                                st = my_new_status if (m_hp > 0) else ""
+                                                total += pr_ * self.leaf(me, m_hp, f_hp, st or me.status, None, 0.0, foe_boost_atk, my_boost_atk, foe_new_status)
                                 else:
                                     # Player fainted before acting
                                     f_hp = min(foe.maxhp, foe.hp + heal_foe)
@@ -1536,7 +1699,8 @@ class Ctx:
                             hp = max(0.0, hp - mon.maxhp / 16.0)
                         if hp > 0 and d > 0:
                             best_t, prio_k = self._best_dmg(mon, foe, foe.hp, intim_p)
-                            if best_t > 1.0 and hp <= d:
+                            p_mon_faster = self.p_faster(mon)
+                            if (best_t > 1.0 or p_mon_faster < 0.5) and not prio_k and hp <= d:
                                 v += pd * ph * (self.leaf(mon, 0.0, foe.hp, "", None, intim_p) - 0.25)
                                 continue
                         v += pd * ph * self.leaf(mon, hp, foe.hp, "", None, intim_p)
