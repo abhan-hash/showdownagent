@@ -1120,24 +1120,27 @@ class Ctx:
             foe_guaranteed_lethal = False
             foe_max_pri = 0
             for fmid, q in self.foe.moves:
+                if q < 0.40 or fmid in ("explosion", "selfdestruct"):
+                    continue
                 fmv = MV.get(fmid)
                 if fmv and fmv["c"] != "T":
                     rl = damage_rolls(self.foe, self.me, fmid, self.weather)
                     max_dmg = rl[-1]
                     min_dmg = rl[0]
                     fn_low = self.foe.name.lower()
-                    if self.foe_mem.item_known == "lifeorb" or (self.foe_mem.item_known is None and "lifeorb" in SPECIES_ITEM_PRIOR.get(fn_low, {})):
+                    priors = SPECIES_ITEM_PRIOR.get(fn_low, {})
+                    if self.foe_mem.item_known == "lifeorb" or (self.foe_mem.item_known is None and priors.get("lifeorb", 0.0) >= 0.40):
                         max_dmg = max(max_dmg, rl[-1] * 1.3)
                         min_dmg = max(min_dmg, rl[0] * 1.3)
-                    elif self.foe_mem.item_known == "choiceband" or (self.foe_mem.item_known is None and "choiceband" in SPECIES_ITEM_PRIOR.get(fn_low, {})):
+                    elif self.foe_mem.item_known == "choiceband" or (self.foe_mem.item_known is None and priors.get("choiceband", 0.0) >= 0.40):
                         if fmv["c"] == "P":
                             max_dmg = max(max_dmg, rl[-1] * 1.5)
                             min_dmg = max(min_dmg, rl[0] * 1.5)
-                    elif self.foe_mem.item_known == "choicespecs" or (self.foe_mem.item_known is None and "choicespecs" in SPECIES_ITEM_PRIOR.get(fn_low, {})):
+                    elif self.foe_mem.item_known == "choicespecs" or (self.foe_mem.item_known is None and priors.get("choicespecs", 0.0) >= 0.40):
                         if fmv["c"] == "S":
                             max_dmg = max(max_dmg, rl[-1] * 1.5)
                             min_dmg = max(min_dmg, rl[0] * 1.5)
-                    if max_dmg >= self.me.hp or rl[8] >= self.me.hp * 0.88:
+                    if max_dmg >= self.me.hp:
                         foe_lethal = True
                         foe_max_pri = max(foe_max_pri, fmv.get("p", 0))
                         f_acc = fmv.get("a", 100)
