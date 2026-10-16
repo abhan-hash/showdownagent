@@ -1301,54 +1301,19 @@ class Ctx:
                 score -= 0.01 * neg
         if mid in ("outrage", "petaldance"):
             score -= self.P.get("lock_pen", 0.15)
-        if mid in TWO_TURN_MOVES:
-            # If any 1-turn move can also achieve a lethal KO, heavily penalize the 2-turn move
-            can_1turn_ko = False
-            for m in self.obs.get("valid_moves", []) or []:
-                omid = norm(m.get("id") or m.get("name"))
-                if omid not in TWO_TURN_MOVES:
-                    omv = MV.get(omid)
-                    if omv and omv["c"] != "T":
-                        orl = damage_rolls(self.me, self.foe, omid, self.weather)
-                        if orl[4] >= self.foe.hp:
-                            can_1turn_ko = True
-                            break
-            if can_1turn_ko:
-                score -= 0.50
-
-            if mid == "phantomforce":
-                foe_has_ghost_counter = False
-                for t in self.obs.get("foe_team", []) or []:
-                    if t.get("name") != self.foe.name and (t.get("hp_percent", 0) or 0) > 0:
-                        t_sp = SP.get(t.get("name"), {})
-                        t_types = t_sp.get("types", [])
-                        if "Normal" in t_types or "Dark" in t_types:
-                            foe_has_ghost_counter = True
-                            break
-                if getattr(self.agent, "foe_switched_on_phantom", False) or (getattr(self.agent, "foe_switched_count", 0) > 0 and foe_has_ghost_counter):
-                    score -= 0.25
-            elif mid in ("solarbeam", "fly", "dig", "bounce"):
-                score -= 0.20
-
-        # Race threshold check:
-        # If foe can 2HKO us, but a move cannot 2HKO the foe (requires 3+ hits):
-        # penalize the insufficient move so we prefer the higher-damage move that can win the damage race!
-        foe_2hko_us = False
-        for fmid, q in self.foe.moves:
-            frl = damage_rolls(self.foe, self.me, fmid, self.weather)
-            if frl[8] * 2 >= self.me.hp:
-                foe_2hko_us = True
-                break
-        if foe_2hko_us:
-            my_rl = damage_rolls(self.me, self.foe, mid, self.weather)
-            if my_rl[8] > 0 and my_rl[8] * 2 < self.foe.hp:
-                for om in self.obs.get("valid_moves", []) or []:
-                    omid = norm(om.get("id") or om.get("name"))
-                    if omid != mid:
-                        orl = damage_rolls(self.me, self.foe, omid, self.weather)
-                        if orl[8] * 2 >= self.foe.hp:
-                            score -= 0.20
-                            break
+        if mid == "phantomforce":
+            foe_has_ghost_counter = False
+            for t in self.obs.get("foe_team", []) or []:
+                if t.get("name") != self.foe.name and (t.get("hp_percent", 0) or 0) > 0:
+                    t_sp = SP.get(t.get("name"), {})
+                    t_types = t_sp.get("types", [])
+                    if "Normal" in t_types or "Dark" in t_types:
+                        foe_has_ghost_counter = True
+                        break
+            if getattr(self.agent, "foe_switched_on_phantom", False) or (getattr(self.agent, "foe_switched_count", 0) > 0 and foe_has_ghost_counter):
+                score -= 0.25
+        elif mid in ("solarbeam", "fly", "dig", "bounce"):
+            score -= 0.20
 
         # Choice Band / Choice Specs Lock Quality Rule:
         # If holding Choice Band, locking into a Special move (e.g. Flamethrower on Dragapult)
