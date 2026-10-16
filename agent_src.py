@@ -1117,24 +1117,32 @@ class Ctx:
 
         if p_faster < 0.5 and not has_sash:
             foe_lethal = False
+            foe_guaranteed_lethal = False
             foe_max_pri = 0
             for fmid, q in self.foe.moves:
                 fmv = MV.get(fmid)
                 if fmv and fmv["c"] != "T":
                     rl = damage_rolls(self.foe, self.me, fmid, self.weather)
                     max_dmg = rl[-1]
+                    min_dmg = rl[0]
                     fn_low = self.foe.name.lower()
                     if self.foe_mem.item_known == "lifeorb" or (self.foe_mem.item_known is None and "lifeorb" in SPECIES_ITEM_PRIOR.get(fn_low, {})):
                         max_dmg = max(max_dmg, rl[-1] * 1.3)
+                        min_dmg = max(min_dmg, rl[0] * 1.3)
                     elif self.foe_mem.item_known == "choiceband" or (self.foe_mem.item_known is None and "choiceband" in SPECIES_ITEM_PRIOR.get(fn_low, {})):
                         if fmv["c"] == "P":
                             max_dmg = max(max_dmg, rl[-1] * 1.5)
+                            min_dmg = max(min_dmg, rl[0] * 1.5)
                     elif self.foe_mem.item_known == "choicespecs" or (self.foe_mem.item_known is None and "choicespecs" in SPECIES_ITEM_PRIOR.get(fn_low, {})):
                         if fmv["c"] == "S":
                             max_dmg = max(max_dmg, rl[-1] * 1.5)
+                            min_dmg = max(min_dmg, rl[0] * 1.5)
                     if max_dmg >= self.me.hp or rl[8] >= self.me.hp * 0.88:
                         foe_lethal = True
                         foe_max_pri = max(foe_max_pri, fmv.get("p", 0))
+                        f_acc = fmv.get("a", 100)
+                        if f_acc >= 100 and min_dmg >= self.me.hp:
+                            foe_guaranteed_lethal = True
 
             if foe_lethal:
                 best_prio = None
@@ -1152,7 +1160,8 @@ class Ctx:
                 if best_prio is not None and max_prio_dmg > 0:
                     best_prio_mid = best_prio[1]
                     prio_is_lethal = (max_prio_dmg >= self.foe.hp)
-                    has_bench = any(m.hp > 0 for _, m in self.bench)
+                    living_bench = [mon for _, mon in self.bench if mon.hp > 0]
+                    has_bench = len(living_bench) > 0
 
                     if prio_is_lethal:
                         for i, (sc, cmd, mid) in enumerate(scores):
@@ -1160,17 +1169,94 @@ class Ctx:
                                 scores[i][0] = sc + 1.0
                             else:
                                 scores[i][0] = sc - 1.0
-                    elif has_bench:
+                    elif not has_bench:
+                        # No bench remaining: dying with non-lethal chip damage still results in an immediate 100% loss.
+                        # If we have any 0-priority move that can achieve a lethal KO, gambling on that move (hoping
+                        # the foe misses an inaccurate move like Hydro Pump/Focus Blast or rolls low) is our ONLY winning line!
+                        has_ko_move = any(
+                            (damage_rolls(self.me, self.foe, norm(m.get("id") or m.get("name")), self.weather)[-1] >= self.foe.hp)
+                            for m in obs.get("valid_moves", []) or []
+                            if norm(m.get("id") or m.get("name")) != best_prio_mid and MV.get(norm(m.get("id") or m.get("name")), {}).get("c") != "T"
+                        )
                         for i, (sc, cmd, mid) in enumerate(scores):
                             if mid == best_prio_mid:
-                                scores[i][0] = sc + 0.35
+                                scores[i][0] = sc - 0.50 if has_ko_move else sc
                             else:
                                 mv = MV.get(mid)
-                                if mv and mv.get("p", 0) <= foe_max_pri:
+                                if mv and mv.get("p", 0) <= foe_max_pri and mv["c"] != "T":
                                     m_rl = damage_rolls(self.me, self.foe, mid, self.weather)
                                     can_ko = (m_rl[-1] >= self.foe.hp)
-                                    if not can_ko:
-                                        scores[i][0] = sc - 0.5
+                                    if can_ko:
+                                        scores[i][0] = sc + 0.75
+                                    else:
+                                        scores[i][0] = sc - 0.50
+                    else:
+                        # Has bench remaining: evaluate whether dying with chip damage secures a clean revenge kill
+                        # that would be forfeited if we died dealing 0 damage.
+                        hp_chipped = max(0.0, self.foe.hp - max_prio_dmg)
+                        hp_unchipped = self.foe.hp
+                        fn_low = self.foe.name.lower()
+                        foe_sash_risk = (self.foe.hp >= self.foe.maxhp - 0.5 and (
+                            self.foe_mem.item_known == "focussash" or
+                            (self.foe_mem.item_known is None and "focussash" in SPECIES_ITEM_PRIOR.get(fn_low, {}))
+                        ))
+
+                        chip_secures_revenge = False
+                        can_revenge_anyway = False
+
+                        for b in living_bench:
+                            b_faster = (self.p_faster(b) >= 0.5)
+                            b_safe_dmg = 0.0
+                            b_prio_safe_dmg = 0.0
+                            moves_list = b.moves if isinstance(b.moves[0] if b.moves else "", str) else [bm for bm, _ in b.moves]
+                            for b_mid in moves_list:
+                                b_mv = MV.get(b_mid)
+                                if not b_mv or b_mv["c"] == "T":
+                                    continue
+                                b_rl = damage_rolls(b, self.foe, b_mid, self.weather)
+                                b_dmg = b_rl[4]
+                                if b_mv.get("p", 0) > 0:
+                                    b_prio_safe_dmg = max(b_prio_safe_dmg, b_dmg)
+                                b_safe_dmg = max(b_safe_dmg, b_dmg)
+
+                            b_kills_chipped = (b_faster and b_safe_dmg >= hp_chipped) or (b_prio_safe_dmg >= hp_chipped)
+                            b_kills_unchipped = (not foe_sash_risk) and ((b_faster and b_safe_dmg >= hp_unchipped) or (b_prio_safe_dmg >= hp_unchipped))
+
+                            foe_threatens_b = False
+                            for fmid, q in self.foe.moves:
+                                fmv = MV.get(fmid)
+                                if fmv and fmv["c"] != "T":
+                                    f_on_b_rl = damage_rolls(self.foe, b, fmid, self.weather)
+                                    if f_on_b_rl[-1] >= b.hp or f_on_b_rl[8] >= b.hp * 0.70:
+                                        foe_threatens_b = True
+                                        break
+
+                            if b_kills_chipped and (not b_kills_unchipped or foe_threatens_b):
+                                chip_secures_revenge = True
+                            if b_kills_unchipped and not foe_threatens_b:
+                                can_revenge_anyway = True
+
+                        if foe_guaranteed_lethal or (chip_secures_revenge and not can_revenge_anyway):
+                            # Dying with chip guarantees a safe revenge kill, while dying without chip risks losing our bench mon.
+                            # Priority chip is strictly dominant over gambling on a miss!
+                            for i, (sc, cmd, mid) in enumerate(scores):
+                                if mid == best_prio_mid:
+                                    scores[i][0] = sc + 0.75
+                                else:
+                                    scores[i][0] = sc - 0.60
+                        else:
+                            # Bench can either revenge kill regardless, or cannot revenge kill even with chip.
+                            # Priority chip is preferred for safety, but 0-priority lethal KO moves are not penalized.
+                            for i, (sc, cmd, mid) in enumerate(scores):
+                                if mid == best_prio_mid:
+                                    scores[i][0] = sc + 0.35
+                                else:
+                                    mv = MV.get(mid)
+                                    if mv and mv.get("p", 0) <= foe_max_pri:
+                                        m_rl = damage_rolls(self.me, self.foe, mid, self.weather)
+                                        can_ko = (m_rl[-1] >= self.foe.hp)
+                                        if not can_ko:
+                                            scores[i][0] = sc - 0.50
 
         sw_scores = []
         for idx, mon in self.bench:
